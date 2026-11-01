@@ -53,4 +53,4 @@ Secret `FORK_SYNC_TOKEN`: fine-grained PAT, repository access `popcat19/wine-dwp
 
 Steam: extract `dwproton-<ver>-touch-x86_64.tar.xz` into `~/.local/share/Steam/compatibilitytools.d/`, restart Steam, and select it per game (Steam or ProtonPlus Games tab).
 
-AAGL-family launchers: set `components.servers` in the launcher's `config.json` to `https://github.com/popcat19/components` (keep the upstream URL after it as a fallback). The launcher then lists `wine-dwproton-touch` under Wine versions and downloads it like any other runner.
+AAGL-family launchers: set `components.servers` in the launcher's `config.json` to `["https://github.com/popcat19/components"]` only. The launcher skips syncing when its local index matches any listed server, so keeping upstream in the list leaves it on upstream. The launcher then lists `wine-dwproton-touch` under Wine versions and downloads it like any other runner.
