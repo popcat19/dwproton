@@ -1,0 +1,118 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing touch/<version> branch to build (e.g. 11.0-16)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build dwproton-${{ inputs.version }}-touch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      NAME: dwproton-${{ inputs.version }}-touch
+    steps:
+      - name: Free disk space
+        uses: endersonmenezes/free-disk-space@v3
+        with:
+          remove_android: true
+          remove_dotnet: true
+          remove_haskell: true
+          remove_tool_cache: true
+          remove_swap: true
+          remove_packages: >-
+            azure-cli
+            google-cloud-cli
+            microsoft-edge-stable
+            google-chrome-stable
+            firefox
+            postgresql*
+            temurin-*
+            *llvm*
+            mysql*
+            dotnet-sdk-*
+          remove_packages_one_command: false
+          remove_folders: >-
+            /usr/share/swift
+            /usr/share/miniconda
+            /usr/share/az*
+            /usr/local/lib/node_modules
+            /usr/local/share/chromium
+            /usr/local/share/powershell
+            /usr/local/julia
+            /usr/local/aws-cli
+            /usr/local/aws-sam-cli
+            /usr/share/gradle
+          testing: false
+
+      - name: Prepare host
+        run: sudo apt-get update && sudo apt-get install -y ccache fontforge-nox
+
+      - name: Checkout touch/${{ inputs.version }}
+        uses: actions/checkout@v6
+        with:
+          ref: touch/${{ inputs.version }}
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: false
+
+      - name: Init submodules
+        run: |
+          git submodule update --init --filter=tree:0 --recursive
+          grep -Fq 'pointer id %d not found' wine/dlls/win32u/input.c
+          mkdir build
+
+      - name: Configure
+        working-directory: build
+        env:
+          RUSTFLAGS: -Copt-level=3 -Ctarget-cpu=nocona
+          USE_LTO: 0
+        run: ../configure.sh --build-name="$NAME" --container-engine=docker --enable-ccache
+
+      - name: Cache key
+        id: cache-key
+        working-directory: build
+        run: echo "key=ccache-touch-$(make get-steamrt-image | tail -1 | sha1sum | cut -c1-16)" >>"$GITHUB_OUTPUT"
+
+      - name: Restore ccache
+        id: ccache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.ccache
+          key: ${{ steps.cache-key.outputs.key }}-${{ github.run_id }}
+          restore-keys: ${{ steps.cache-key.outputs.key }}
+
+      - name: Build
+        working-directory: build
+        run: make -j"$(nproc)" redist
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(printf '%s\n\n%s\n%s\n' \
+            "DW-Proton ${{ inputs.version }} with the upstream Wine pointer API backport (GetPointerType, GetPointerInfoList, GetPointerTouchInfo*)." \
+            "Wine source: https://github.com/${{ github.repository_owner }}/wine-dwproton/tree/touch/${{ inputs.version }}" \
+            "Proton source: https://github.com/${{ github.repository }}/tree/touch/${{ inputs.version }}")
+          gh release delete "$NAME" -R "${{ github.repository }}" --cleanup-tag --yes 2>/dev/null || true
+          gh release create "$NAME" -R "${{ github.repository }}" \
+            --target "touch/${{ inputs.version }}" --title "$NAME" --notes "$notes" --latest \
+            "build/$NAME.tar.xz" "build/$NAME.sha512sum"

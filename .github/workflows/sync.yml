@@ -1,0 +1,51 @@
+name: Sync
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'dwproton version to build (e.g. 11.0-16); empty = latest'
+        required: false
+        default: ''
+      force:
+        description: 'Rebuild even if the release exists'
+        type: boolean
+        default: false
+
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    name: Rebase backport
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.sync.outputs.build }}
+      version: ${{ steps.sync.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fork-ci
+
+      - id: sync
+        env:
+          FORK_SYNC_TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_FORCE: ${{ inputs.force }}
+        run: ./sync.sh
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.build == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.sync.outputs.version }}
+    secrets: inherit
