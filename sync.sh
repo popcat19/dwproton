@@ -49,6 +49,12 @@ open_issue() {
   fi
 }
 
+# A manually dispatched build still running would race a new one for the same release.
+build_running() {
+  [[ -n $(gh run list -R "$PROTON_REPO" --workflow "$1" --event workflow_dispatch \
+    --json status --jq '.[] | select(.status != "completed") | .status' | head -1) ]]
+}
+
 release_exists() {
   [[ ${INPUT_FORCE:-false} != true ]] && gh release view "$1" -R "$PROTON_REPO" >/dev/null 2>&1
 }
@@ -172,6 +178,10 @@ Resolve locally and push \`${FORK_SPRITZ_BRANCH}\` to ${FORK_SPRITZ}."
 
 target_proton() {
   local wine_sha
+  if build_running build.yml; then
+    log "manual build.yml run in progress; skipping proton"
+    return
+  fi
   if release_exists "dwproton-${proton_ver}-touch"; then
     log "release dwproton-${proton_ver}-touch exists"
     return
@@ -186,6 +196,10 @@ target_proton() {
 }
 
 target_runner() {
+  if build_running runner.yml; then
+    log "manual runner.yml run in progress; skipping runner"
+    return
+  fi
   if release_exists "wine-dwproton-touch-${runner_ver}"; then
     log "release wine-dwproton-touch-${runner_ver} exists"
     return
