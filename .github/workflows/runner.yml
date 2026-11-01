@@ -1,0 +1,78 @@
+name: Runner
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing wine-dwproton touch/<version> branch to build (e.g. 11.0-11)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build wine-dwproton-touch-${{ inputs.version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      TAG: wine-dwproton-touch-${{ inputs.version }}
+      RUNNER: wine-dwproton-touch-wow64-${{ inputs.version }}
+    steps:
+      - name: Checkout spritz-wine dwproton-touch
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/spritz-wine
+          ref: dwproton-touch
+
+      - name: Restore ccache
+        id: ccache
+        uses: actions/cache/restore@v5
+        with:
+          path: ./ccache
+          key: ccache-runner-touch-${{ github.run_id }}
+          restore-keys: ccache-runner-touch-
+
+      - uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker
+
+      - name: Build
+        env:
+          WINE_DWPROTON_URL: https://github.com/${{ github.repository_owner }}/wine-dwproton.git
+          WINE_DWPROTON_FALLBACK_URL: https://github.com/${{ github.repository_owner }}/wine-dwproton.git
+          WINE_VERSION: touch/${{ inputs.version }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          BUILD_NAME: wine-dwproton-touch
+        run: |
+          # spritz names the archive <name>-wow64-<describe>-<release>; describe yields
+          # the major (11.0), so pass only the dwproton release number.
+          export RELEASE_VERSION="${RELEASE_VERSION##*-}"
+          ./build.sh
+          test -f "$RUNNER-x86_64.tar.xz"
+          tar -xJOf "$RUNNER-x86_64.tar.xz" "$RUNNER/lib/wine/x86_64-unix/win32u.so" | grep -aFq 'pointer id %d not found'
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: ./ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(printf '%s\n\n%s\n%s\n' \
+            "wine-dwproton ${{ inputs.version }} runner for AAGL-family launchers, with the upstream Wine pointer API backport." \
+            "Wine source: https://github.com/${{ github.repository_owner }}/wine-dwproton/tree/touch/${{ inputs.version }}" \
+            "Build scripts: https://github.com/${{ github.repository_owner }}/spritz-wine/tree/dwproton-touch")
+          gh release delete "$TAG" -R "${{ github.repository }}" --cleanup-tag --yes 2>/dev/null || true
+          gh release create "$TAG" -R "${{ github.repository }}" \
+            --target fork-ci --title "$TAG" --notes "$notes" --latest=false \
+            "$RUNNER-x86_64.tar.xz"

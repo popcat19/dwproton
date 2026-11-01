@@ -4,7 +4,10 @@ Purpose: Build [DW-Proton](https://dawn.wine/dawn-winery/dwproton) with the upst
 
 DW-Proton 11.0 inherits a stub `NtUserGetPointerInfoList` that always fails with `ERROR_CALL_NOT_IMPLEMENTED`. Unity titles (Arknights: Endfield, others using the new input system) call `GetPointerTouchInfo` on every `WM_POINTER` touch message, get the error, and drop the tap. The cursor still moves, so touch looks half-working.
 
-Upstream Wine implemented the API in 11.13 and finished the WoW64 thunks in 11.16. This fork carries those 12 commits on top of each DW-Proton release.
+Upstream Wine implemented the API in 11.13 and finished the WoW64 thunks in 11.16. This fork carries those 12 commits on top of DW-Proton releases and publishes two builds:
+
+- `dwproton-<ver>-touch`: full Proton for Steam, tracking the newest dawn-winery release.
+- `wine-dwproton-touch-<ver>`: standalone Wine runner for AAGL-family launchers, tracking the version pinned by [NelloKudo/spritz-wine](https://github.com/NelloKudo/spritz-wine/tree/dwproton-builds), whose patches make DW-Proton's Wine run outside Steam.
 
 ## Branches
 
@@ -12,7 +15,9 @@ Upstream Wine implemented the API in 11.13 and finished the WoW64 thunks in 11.1
 |---|---|---|
 | [wine-dwproton](https://github.com/popcat19/wine-dwproton) | `touch/<ver>` | `dwproton/<ver>` plus the backport |
 | [dwproton](https://github.com/popcat19/dwproton) | `touch/<ver>` | `dwproton/<ver>` with the `wine` submodule pointed at the fork, inherited CachyOS workflows removed |
-| dwproton | `fork-ci` (default) | This README, `sync.sh`, workflows |
+| [spritz-wine](https://github.com/popcat19/spritz-wine) | `dwproton-touch` | NelloKudo's `dwproton-builds` with overridable Wine source, ref and release number |
+| [components](https://github.com/popcat19/components) | `main` | an-anime-team index plus a `wine-dwproton-touch` group |
+| dwproton | `fork-ci` (default) | This README, `sync.sh`, `components.sh`, workflows |
 
 Upstream branches and tags from the initial mirror stay as-is. CI does not re-mirror them.
 
@@ -30,19 +35,22 @@ Adaptations for the 11.0 base:
 
 ## CI
 
-`sync.yml` runs every 6 hours and on demand:
+`sync.yml` runs every 6 hours and on demand. `sync.sh` handles both targets independently:
 
-1. Find the newest `dwproton/*` branch on dawn.wine. Stop if `dwproton-<ver>-touch` is already released.
-2. Stop and open an issue if upstream already contains the real implementation.
-3. Cherry-pick the newest `touch/*` backport onto `dwproton/<ver>`. On conflict, open an issue and fail.
-4. Push `touch/<ver>` to both forks, then call `build.yml`.
+1. Pick the version: newest `dwproton/*` branch for Steam, `patches/wine-commit` from spritz-wine `dwproton-builds` for the runner. Skip a target whose release exists.
+2. Skip and open an issue if upstream already contains the real implementation.
+3. Reuse the fork's `touch/<ver>` branch, or cherry-pick the newest `touch/*` backport onto `dwproton/<ver>`. On conflict, open an issue and fail. A manually resolved `touch/<ver>` push is picked up on the next run.
+4. Steam: point the proton fork's `touch/<ver>` submodule at the Wine branch, then call `build.yml`.
+5. Runner: rebase the spritz-wine fork onto NelloKudo's branch if it moved, then call `runner.yml`.
 
-`build.yml` builds in the Steam Runtime SDK container (same steps as upstream's CachyOS GitHub job, x86_64 only) and publishes `dwproton-<ver>-touch.tar.xz` as a release.
+`build.yml` builds in the Steam Runtime SDK container (same steps as upstream's CachyOS GitHub job, x86_64 only). `runner.yml` builds with spritz-wine's container. Both check the binaries for the backport before publishing.
 
-Secret `FORK_SYNC_TOKEN`: fine-grained PAT, repository access `popcat19/wine-dwproton` and `popcat19/dwproton`, permissions Contents read/write and Workflows read/write.
+`components.sh` runs after every sync. Launchers hard-reset their index to the server, so it rebuilds the fork as upstream `main` plus one commit adding the `wine-dwproton-touch` group, and only force-pushes when that differs.
+
+Secret `FORK_SYNC_TOKEN`: fine-grained PAT, repository access `popcat19/wine-dwproton`, `popcat19/dwproton`, `popcat19/spritz-wine` and `popcat19/components`, permissions Contents read/write and Workflows read/write.
 
 ## Install
 
-Steam: extract the release tarball into `~/.local/share/Steam/compatibilitytools.d/`, restart Steam, select `dwproton-<ver>-touch` per game.
+Steam: extract `dwproton-<ver>-touch-x86_64.tar.xz` into `~/.local/share/Steam/compatibilitytools.d/`, restart Steam, and select it per game (Steam or ProtonPlus Games tab).
 
-AAGL-family launchers: the tarball's `files/` directory is a Wine tree. Untested as a launcher runner.
+AAGL-family launchers: set `components.servers` in the launcher's `config.json` to `https://github.com/popcat19/components` (keep the upstream URL after it as a fallback). The launcher then lists `wine-dwproton-touch` under Wine versions and downloads it like any other runner.

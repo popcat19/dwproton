@@ -6,11 +6,15 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'dwproton version to build (e.g. 11.0-16); empty = latest'
+        description: 'dwproton version for the Steam build (e.g. 11.0-16); empty = latest'
+        required: false
+        default: ''
+      runner_version:
+        description: 'wine-dwproton version for the AAGL runner (e.g. 11.0-11); empty = spritz pin'
         required: false
         default: ''
       force:
-        description: 'Rebuild even if the release exists'
+        description: 'Rebuild even if the releases exist'
         type: boolean
         default: false
 
@@ -27,8 +31,10 @@ jobs:
     name: Rebase backport
     runs-on: ubuntu-24.04
     outputs:
-      build: ${{ steps.sync.outputs.build }}
-      version: ${{ steps.sync.outputs.version }}
+      proton_build: ${{ steps.sync.outputs.proton_build }}
+      proton_version: ${{ steps.sync.outputs.proton_version }}
+      runner_build: ${{ steps.sync.outputs.runner_build }}
+      runner_version: ${{ steps.sync.outputs.runner_version }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -39,13 +45,37 @@ jobs:
           FORK_SYNC_TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           INPUT_VERSION: ${{ inputs.version }}
+          INPUT_RUNNER_VERSION: ${{ inputs.runner_version }}
           INPUT_FORCE: ${{ inputs.force }}
         run: ./sync.sh
 
-  build:
+  proton:
     needs: sync
-    if: needs.sync.outputs.build == 'true'
+    if: always() && needs.sync.outputs.proton_build == 'true'
     uses: ./.github/workflows/build.yml
     with:
-      version: ${{ needs.sync.outputs.version }}
+      version: ${{ needs.sync.outputs.proton_version }}
     secrets: inherit
+
+  runner:
+    needs: sync
+    if: always() && needs.sync.outputs.runner_build == 'true'
+    uses: ./.github/workflows/runner.yml
+    with:
+      version: ${{ needs.sync.outputs.runner_version }}
+    secrets: inherit
+
+  components:
+    name: Update components index
+    needs: [sync, runner]
+    if: always() && needs.runner.result != 'failure'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fork-ci
+
+      - env:
+          FORK_SYNC_TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: ./components.sh
