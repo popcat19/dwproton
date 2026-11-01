@@ -1,7 +1,7 @@
 [submodule "wine"]
 	path = wine
-	url = https://dawn.wine/dawn-winery/wine-dwproton.git
-	branch = base
+	url = https://github.com/popcat19/wine-dwproton.git
+	branch = touch/11.0-16
 [submodule "meson"]
 	path = meson
 	url = https://github.com/mesonbuild/meson.git
