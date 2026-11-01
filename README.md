@@ -53,7 +53,7 @@ Secret `FORK_SYNC_TOKEN`: fine-grained PAT, repository access `popcat19/wine-dwp
 
 Steam, manual: extract `dwproton-<ver>-touch.tar.xz` into `~/.local/share/Steam/compatibilitytools.d/`, restart Steam, and select it per game (Steam properties or the ProtonPlus Games tab). ProtonPlus cannot download this build because its sources are hardcoded.
 
-Steam, NixOS: the `dwproton-touch.nix` home module in [popcat19-nixos-hm](https://github.com/PopCat19/popcat19-nixos-hm) runs `dwproton-touch-update` hourly. It installs the newest release as `DW-Proton Touch Latest` after checking the `.sha512sum`, defers while Steam runs, and leaves ProtonPlus-managed tools alone.
+Steam, NixOS: the `dwproton-touch.nix` home module in [popcat19-nixos-hm](https://dawn.wine/popcat19/popcat19-nixos-hm) (`configuration/home/modules/`, gaming hosts only) runs `dwproton-touch-update` hourly. It installs the newest release as `DW-Proton Touch Latest` after checking the `.sha512sum`, defers while Steam runs, and leaves ProtonPlus-managed tools alone.
 
 AAGL-family launchers: set `components.servers` in the launcher's `config.json` to `["https://github.com/popcat19/components"]` only. The launcher skips syncing when its local index matches any listed server, so keeping upstream in the list leaves it on upstream. On next start it lists `wine-dwproton-touch` under Wine versions; download and select it there. The NixOS module above sets the server and backs up the original as `config.json.pre-dwproton-touch`.
 
@@ -63,4 +63,4 @@ AAGL-family launchers: set `components.servers` in the launcher's `config.json` 
 - Rebuild: dispatch `sync.yml` with `force`. The release is replaced.
 - Conflicts: the sync opens an issue naming the commit and files. Resolve locally, push `touch/<ver>` to the wine fork (or `dwproton-touch` to the spritz fork), then rerun `sync.yml`.
 - Token: `FORK_SYNC_TOKEN` expires 2027-11. Syncs fail at the first authenticated fetch once it lapses. Create a new token with the same repositories and permissions and run `gh secret set FORK_SYNC_TOKEN -R popcat19/dwproton`.
-- Retirement: when the sync opens "Upstream dwproton <ver> ships the pointer API", switch Steam games back to upstream DW-Proton, restore each launcher's `config.json.pre-dwproton-touch` (or set `components.servers` back to `["https://github.com/an-anime-team/components"]`), disable the module, and archive the four forks.
+- Retirement: when the sync opens "Upstream dwproton <ver> ships the pointer API", switch Steam games back to upstream DW-Proton, restore each launcher's `config.json.pre-dwproton-touch` (or set `components.servers` back to `["https://github.com/an-anime-team/components"]`), remove `./dwproton-touch.nix` from the home module imports, and archive the four forks.
